@@ -162,3 +162,15 @@ src/agent_pic_bench/metrics.py
 ```
 
 第一版输入一条 SWE 轨迹，输出一份 normalized trace 和一份 reuse relation JSONL。等这条链跑通，再下载全量数据；这样数据规模增长时，规则已经可检查，后续返工会少很多。
+
+## 当前 pilot 状态
+
+OpenHands-Sampled-Trajectories 的消息中没有正式 repo commit 序列。导入器目前根据 `str_replace_editor` 的 `create`、`str_replace`、`insert` 和 `undo_edit` 生成 synthetic snapshot；遇到 `execute_bash` 时将后续状态置为 `unknown`，因为任意 bash 命令可能修改文件。
+
+因此当前关系分为：
+
+- `exact_object_repeat`：对象内容相同，snapshot 已知且兼容；
+- `invalidated_overlap`：中间明确编辑了相同对象；
+- `*_unverified`：文本或对象关系存在，但 snapshot 不可确认。
+
+synthetic snapshot 只用于 pilot 分析，最终 benchmark 需要结合 base repository、工具编辑参数和必要的命令执行日志做文件内容 hash 校验。
