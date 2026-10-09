@@ -31,6 +31,8 @@ def summarize_traces(path: Path) -> Dict[str, Any]:
     repos = set()
     total_events = 0
     events_with_objects = 0
+    observation_events = 0
+    mutation_events = 0
     relations = []
 
     with path.open(encoding="utf-8") as stream:
@@ -49,6 +51,13 @@ def summarize_traces(path: Path) -> Dict[str, Any]:
                 tool_types[event.get("tool_type") or "none"] += 1
                 state_effects[event.get("state_effect", "none")] += 1
                 events_with_objects += bool(event.get("source_objects"))
+                observation_events += bool(
+                    event.get("source_objects")
+                    and not event.get("is_mutation")
+                    and event.get("event_type")
+                    in {"tool_output", "test_result", "agent_prompt"}
+                )
+                mutation_events += bool(event.get("is_mutation"))
             relations.extend(annotate_trace(trace))
 
     distances = [int(item["reuse_distance_events"]) for item in relations]
@@ -62,11 +71,21 @@ def summarize_traces(path: Path) -> Dict[str, Any]:
         "resolved": dict(resolved),
         "events": total_events,
         "events_with_objects": events_with_objects,
+        "observation_events": observation_events,
+        "mutation_events": mutation_events,
         "event_types": dict(event_types),
         "tool_types": dict(tool_types),
         "state_effects": dict(state_effects),
         "relations": len(relations),
         "raw_exact_relations": sum(bool(item["raw_exact"]) for item in relations),
+        "overlap_tokens": sum(int(item.get("overlap_tokens", 0)) for item in relations),
+        "prefix_relations": sum(
+            item.get("position_relation") == "prefix" for item in relations
+        ),
+        "non_prefix_relations": sum(
+            item.get("position_relation") in {"interior", "suffix"}
+            for item in relations
+        ),
         "state_compatible_relations": sum(
             bool(item["state_compatible"]) for item in relations
         ),

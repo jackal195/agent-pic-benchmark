@@ -10,6 +10,9 @@ from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 
 PATH_ARGUMENT_RE = re.compile(r'"path"\s*:\s*"([^"]+)"')
+VIEW_RANGE_RE = re.compile(r'"view_range"\s*:\s*\[\s*(\d+)\s*,\s*(\d+)\s*\]')
+NUMBERED_TAB_LINE_RE = re.compile(r"^\s*\d+\t(.*)$")
+NUMBERED_PIPE_LINE_RE = re.compile(r"^\s*\d+\s*\|\s?(.*)$")
 
 
 def _repo_id(instance_id: str) -> str:
@@ -37,6 +40,32 @@ def _path_from_tool_call(message: Dict[str, Any]) -> Optional[str]:
         if match:
             return match.group(1)
     return None
+
+
+def _view_range_from_args(arguments: Dict[str, Any]) -> Optional[List[int]]:
+    """Return an editor view range as [start_line, end_line] when present."""
+    value = arguments.get("view_range")
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            start, end = int(value[0]), int(value[1])
+        except (TypeError, ValueError):
+            return None
+        if start >= 1 and end >= start:
+            return [start, end]
+    return None
+
+
+def _canonical_tool_output(text: str) -> str:
+    """Remove OpenHands' ``cat -n`` wrapper while preserving code indentation."""
+    lines = text.splitlines()
+    canonical: List[str] = []
+    for line in lines:
+        match = NUMBERED_TAB_LINE_RE.match(line) or NUMBERED_PIPE_LINE_RE.match(line)
+        if match:
+            canonical.append(match.group(1))
+    if canonical:
+        return "\n".join(canonical) + ("\n" if text.endswith("\n") else "")
+    return text
 
 
 def _tool_specs(message: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any], str]]:
@@ -89,13 +118,35 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
         role = message.get("role") or "unknown"
         content = message.get("content") or ""
         raw_text = content if content else _tool_call_text(message)
+        normalized_text = (
+            _canonical_tool_output(raw_text)
+            if role == "tool" and message.get("name") == "str_replace_editor"
+            else raw_text
+        )
         source_objects: List[str] = []
+        source_spans: List[Dict[str, Any]] = []
         changed_objects: Set[str] = set()
         state_effect = "none"
+        observation_kind: Optional[str] = None
+        is_mutation = False
+        tool_command: Optional[str] = None
+        event_path: Optional[str] = None
 
         if role == "tool":
             effect = pending_effects.pop(message.get("tool_call_id") or "", None)
             if effect:
+                is_mutation = bool(effect.get("is_mutation", False))
+                if effect.get("path"):
+                    event_path = effect["path"]
+                if effect.get("view_range"):
+                    source_spans.append(
+                        {
+                            "path": effect.get("path"),
+                            "start_line": effect["view_range"][0],
+                            "end_line": effect["view_range"][1],
+                        }
+                    )
+                observation_kind = effect.get("observation_kind") or observation_kind
                 changed_objects.update(effect.get("changed_objects", []))
                 if effect.get("unknown_state"):
                     state_effect = "unknown"
@@ -109,36 +160,71 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
 
         for call_id, arguments, function_name in _tool_specs(message):
             path = arguments.get("path")
+            if isinstance(path, str):
+                event_path = path
+            command = arguments.get("command")
+            if isinstance(command, str):
+                tool_command = command
             object_id = _object_id(repo_id, path) if isinstance(path, str) else None
             if object_id:
                 call_objects[call_id] = object_id
-                if function_name == "str_replace_editor" and _editor_mutation(arguments):
+                if function_name == "str_replace_editor" and command == "view":
+                    observation_kind = "code_view"
+                    view_range = _view_range_from_args(arguments)
+                    if view_range:
+                        source_spans.append(
+                            {
+                                "path": path,
+                                "start_line": view_range[0],
+                                "end_line": view_range[1],
+                            }
+                        )
+                    pending_effects[call_id] = {
+                        "changed_objects": [],
+                        "unknown_state": False,
+                        "is_mutation": False,
+                        "path": path,
+                        "view_range": view_range,
+                        "observation_kind": "code_view",
+                    }
+                elif function_name == "str_replace_editor" and _editor_mutation(arguments):
+                    is_mutation = True
                     pending_effects[call_id] = {
                         "changed_objects": [object_id],
                         "unknown_state": False,
+                        "is_mutation": True,
                     }
                 elif function_name == "execute_bash":
                     pending_effects[call_id] = {
                         "changed_objects": [],
                         "unknown_state": True,
+                        "is_mutation": False,
                     }
             elif function_name == "execute_bash":
                 pending_effects[call_id] = {
                     "changed_objects": [],
                     "unknown_state": True,
+                    "is_mutation": False,
                 }
 
         path = _path_from_tool_call(message)
         if path:
             object_id = _object_id(repo_id, path)
-            source_objects.append(object_id)
+            if not is_mutation:
+                source_objects.append(object_id)
             for call in message.get("tool_calls") or []:
                 if call.get("id"):
                     call_objects[call["id"]] = object_id
 
         tool_call_id = message.get("tool_call_id")
         if tool_call_id in call_objects:
-            source_objects.append(call_objects[tool_call_id])
+            if role == "tool" and not is_mutation:
+                source_objects.append(call_objects[tool_call_id])
+                if observation_kind is None:
+                    observation_kind = "tool_output"
+
+        if role == "tool" and observation_kind is None and content:
+            observation_kind = "shell_output" if event_path is None else "tool_output"
 
         events.append(
             {
@@ -152,10 +238,16 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
                 "tool_call_id": tool_call_id,
                 "snapshot_id": snapshot_id,
                 "state_effect": state_effect,
+                "observation_kind": observation_kind,
+                "is_mutation": is_mutation,
+                "path": event_path,
+                "view_range": source_spans[0] if source_spans else None,
+                "tool_command": tool_command,
                 "raw_text": raw_text,
-                "normalized_text": raw_text,
+                "normalized_text": normalized_text,
                 "token_ids": [],
                 "source_objects": sorted(set(source_objects)),
+                "source_spans": source_spans,
                 "changed_objects": sorted(changed_objects),
                 "dynamic_fields": [],
                 "parent_event_id": (

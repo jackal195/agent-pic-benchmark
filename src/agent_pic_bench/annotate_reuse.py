@@ -6,7 +6,23 @@ import argparse
 import json
 from typing import Any, Dict, List, Optional, Set
 
+from .overlap import longest_common_span
 from .tokenizer import TokenizerAdapter, load_tokenizer
+
+
+def _is_observation_event(event: Dict[str, Any]) -> bool:
+    """Return whether an event represents content that entered a model request.
+
+    Mutation calls and their tool outputs are deliberately excluded.  The
+    previous prototype only checked ``source_objects`` and consequently could
+    count an edit result as if it were a second read of the file.
+    """
+    if event.get("is_mutation"):
+        return False
+    if not event.get("source_objects"):
+        return False
+    event_type = event.get("event_type")
+    return event_type in {"tool_output", "test_result", "agent_prompt"}
 
 
 def _shared_objects(source: Dict[str, Any], target: Dict[str, Any]) -> List[str]:
@@ -70,10 +86,10 @@ def annotate_pair(
         state_relation = "same_snapshot"
 
     active_tokenizer = tokenizer or load_tokenizer("whitespace-prototype")
-    overlap_tokens = (
-        active_tokenizer.count(source.get("raw_text", ""))
-        if raw_exact
-        else None
+    overlap = longest_common_span(
+        source.get("normalized_text") or source.get("raw_text", ""),
+        target.get("normalized_text") or target.get("raw_text", ""),
+        active_tokenizer,
     )
 
     relation: Dict[str, Any] = {
@@ -88,7 +104,7 @@ def annotate_pair(
         "source_snapshot_id": source.get("snapshot_id"),
         "target_snapshot_id": target.get("snapshot_id"),
         "raw_exact": raw_exact,
-        "overlap_tokens": overlap_tokens,
+        **overlap,
         "tokenizer": active_tokenizer.name,
         "state_compatible": state_compatible,
         "state_relation": state_relation,
@@ -104,8 +120,14 @@ def annotate_trace(
 ) -> List[Dict[str, Any]]:
     events = trace["events"]
     relations: List[Dict[str, Any]] = []
-    for source_index, source in enumerate(events):
-        for target_index in range(source_index + 1, len(events)):
+    observation_indices = [
+        index for index, event in enumerate(events) if _is_observation_event(event)
+    ]
+    for source_index in observation_indices:
+        source = events[source_index]
+        for target_index in observation_indices:
+            if target_index <= source_index:
+                continue
             relation = annotate_pair(
                 source,
                 events[target_index],

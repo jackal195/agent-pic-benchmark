@@ -10,6 +10,7 @@
 - 相关方法对照矩阵；
 - 一个可校验 JSONL trace 的最小 Python 工具。
 - 一个手工标注关系样例 `data/examples/swe-mini-relations.jsonl`。
+- 代码窗口/工具输出的 span 级原型：`view_range`、最长连续 token overlap、位置类型和 mutation 排除。
 
 ## 快速开始
 
@@ -29,7 +30,17 @@ PYTHONPATH=src python3 -m agent_pic_bench.annotate_reuse \
 
 PYTHONPATH=src python3 -m agent_pic_bench.metrics \
   work/normalized/openhands-shard0.jsonl
+
+PYTHONPATH=src python3 -m agent_pic_bench.cross_trace \
+  work/normalized/openhands-shard0.jsonl
 ```
+
+`metrics` 中的 `prefix_relations`、`non_prefix_relations` 和
+`overlap_tokens` 是机会分析指标，不是实际 KV 命中率；只有接入具体方法并
+重放序列化请求后，才能报告真实 hit、TTFT 和质量变化。
+
+`cross_trace` 用 task_id 聚合独立轨迹，并把 JSONL 顺序明确标为排序假设；没有
+真实时间戳时，它只能作为可复查的跨任务 proxy，不能包装成线上用户到达率。
 
 开发安装：
 

@@ -10,15 +10,25 @@ class TokenizerAdapter:
 
     name = "unknown"
 
-    def count(self, text: str) -> int:
+    def encode(self, text: str) -> list[Any]:
+        """Return token-like values used for overlap alignment.
+
+        The prototype tokenizer intentionally returns strings; a model
+        tokenizer returns integer ids.  Keeping the method here lets the
+        annotator report partial code-window overlap without assuming either
+        representation.
+        """
         raise NotImplementedError
+
+    def count(self, text: str) -> int:
+        return len(self.encode(text))
 
 
 class WhitespaceTokenizer(TokenizerAdapter):
     name = "whitespace-prototype"
 
-    def count(self, text: str) -> int:
-        return len(text.split())
+    def encode(self, text: str) -> list[str]:
+        return text.split()
 
 
 class HuggingFaceTokenizer(TokenizerAdapter):
@@ -26,8 +36,8 @@ class HuggingFaceTokenizer(TokenizerAdapter):
         self.name = name
         self._tokenizer = tokenizer
 
-    def count(self, text: str) -> int:
-        return len(self._tokenizer.encode(text, add_special_tokens=False))
+    def encode(self, text: str) -> list[int]:
+        return self._tokenizer.encode(text, add_special_tokens=False)
 
 
 def load_tokenizer(name: str) -> TokenizerAdapter:
