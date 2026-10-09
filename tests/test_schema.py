@@ -37,3 +37,16 @@ def test_reuse_annotation_detects_exact_and_invalidation() -> None:
     assert invalidated["relation_type"] == "invalidated_overlap"
     assert invalidated["state_compatible"] is False
     assert invalidated["state_relation"] == "object_changed_between_events"
+
+
+def test_missing_snapshots_are_not_treated_as_compatible() -> None:
+    record = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    record["events"][0]["snapshot_id"] = None
+    record["events"][1]["snapshot_id"] = None
+    relation = next(
+        item for item in annotate_trace(record)
+        if item["relation_id"] == "event-0001->event-0002"
+    )
+    assert relation["relation_type"] == "exact_object_repeat_unverified"
+    assert relation["state_compatible"] is False
+    assert relation["state_relation"] == "snapshot_unknown"

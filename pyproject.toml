@@ -12,6 +12,7 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 hf = ["transformers>=4.40"]
+parquet = ["pyarrow>=15"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -39,7 +39,10 @@ def annotate_pair(
         return None
 
     raw_exact = source.get("raw_text") == target.get("raw_text")
-    same_snapshot = source.get("snapshot_id") == target.get("snapshot_id")
+    source_snapshot = source.get("snapshot_id")
+    target_snapshot = target.get("snapshot_id")
+    snapshots_known = source_snapshot is not None and target_snapshot is not None
+    same_snapshot = snapshots_known and source_snapshot == target_snapshot
     cross_agent = source.get("agent_id") != target.get("agent_id")
 
     changed_objects: Set[str] = set()
@@ -49,9 +52,16 @@ def annotate_pair(
     relevant_change = bool(changed_objects & set(shared_objects))
     state_compatible = same_snapshot and not relevant_change
 
-    if relevant_change or not same_snapshot:
+    if relevant_change:
         relation_type = "invalidated_exact_repeat" if raw_exact else "invalidated_overlap"
         state_relation = "object_changed_between_events"
+    elif not snapshots_known:
+        relation_type = (
+            "exact_object_repeat_unverified"
+            if raw_exact
+            else "same_object_changed_view_unverified"
+        )
+        state_relation = "snapshot_unknown"
     elif raw_exact:
         relation_type = "exact_object_repeat"
         state_relation = "same_snapshot"

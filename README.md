@@ -36,3 +36,13 @@ python3 -m pytest
 ```
 
 数据设计文档在 [`outputs/`](outputs/README.md)。
+
+导入真实 OpenHands-SWE-Gym 轨迹需要 Parquet 依赖：
+
+```bash
+python3 -m pip install -e '.[parquet]'
+PYTHONPATH=src python3 -m agent_pic_bench.ingest_openhands \
+  work/raw/openhands-sampled/train.raw-00000-of-00003.parquet \
+  work/normalized/openhands-sample.jsonl \
+  --limit 20
+```
