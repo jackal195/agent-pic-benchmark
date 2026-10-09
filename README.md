@@ -16,6 +16,16 @@
 ```bash
 cd /Users/jackal/Documents/agent-pic-benchmark
 PYTHONPATH=src python3 -m agent_pic_bench.validate_trace data/examples/swe-mini.jsonl
+PYTHONPATH=src python3 -m agent_pic_bench.annotate_reuse data/examples/swe-mini.jsonl
+```
+
+开发阶段默认使用 `whitespace-prototype`。固定评测模型后，可安装 Hugging Face 适配器并传入模型 tokenizer：
+
+```bash
+python3 -m pip install -e '.[hf]'
+PYTHONPATH=src python3 -m agent_pic_bench.annotate_reuse \
+  data/examples/swe-mini.jsonl \
+  --tokenizer MODEL_OR_TOKENIZER_ID
 ```
 
 开发安装：

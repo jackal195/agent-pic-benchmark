@@ -6,10 +6,7 @@ import argparse
 import json
 from typing import Any, Dict, List, Optional, Set
 
-
-def _tokens(text: str) -> List[str]:
-    """Prototype tokenizer; replace with the experiment tokenizer later."""
-    return text.split()
+from .tokenizer import TokenizerAdapter, load_tokenizer
 
 
 def _shared_objects(source: Dict[str, Any], target: Dict[str, Any]) -> List[str]:
@@ -34,6 +31,7 @@ def annotate_pair(
     events: Optional[List[Dict[str, Any]]] = None,
     source_index: Optional[int] = None,
     target_index: Optional[int] = None,
+    tokenizer: Optional[TokenizerAdapter] = None,
 ) -> Optional[Dict[str, Any]]:
     """Create one reuse relation for an ordered pair of events."""
     shared_objects = _shared_objects(source, target)
@@ -61,8 +59,12 @@ def annotate_pair(
         relation_type = "same_object_changed_view"
         state_relation = "same_snapshot"
 
-    source_tokens = _tokens(source.get("raw_text", ""))
-    overlap_tokens = len(source_tokens) if raw_exact else None
+    active_tokenizer = tokenizer or load_tokenizer("whitespace-prototype")
+    overlap_tokens = (
+        active_tokenizer.count(source.get("raw_text", ""))
+        if raw_exact
+        else None
+    )
 
     relation: Dict[str, Any] = {
         "relation_id": f"{source['event_id']}->{target['event_id']}",
@@ -77,7 +79,7 @@ def annotate_pair(
         "target_snapshot_id": target.get("snapshot_id"),
         "raw_exact": raw_exact,
         "overlap_tokens": overlap_tokens,
-        "tokenizer": "whitespace-prototype",
+        "tokenizer": active_tokenizer.name,
         "state_compatible": state_compatible,
         "state_relation": state_relation,
         "annotation_confidence": "exact" if raw_exact else "structural",
@@ -87,7 +89,9 @@ def annotate_pair(
     return relation
 
 
-def annotate_trace(trace: Dict[str, Any]) -> List[Dict[str, Any]]:
+def annotate_trace(
+    trace: Dict[str, Any], tokenizer: Optional[TokenizerAdapter] = None
+) -> List[Dict[str, Any]]:
     events = trace["events"]
     relations: List[Dict[str, Any]] = []
     for source_index, source in enumerate(events):
@@ -98,6 +102,7 @@ def annotate_trace(trace: Dict[str, Any]) -> List[Dict[str, Any]]:
                 events=events,
                 source_index=source_index,
                 target_index=target_index,
+                tokenizer=tokenizer,
             )
             if relation is not None:
                 relations.append(relation)
@@ -108,12 +113,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Annotate Agent PIC reuse relations")
     parser.add_argument("path")
     parser.add_argument("--output", "-o", help="write relations as JSONL")
+    parser.add_argument(
+        "--tokenizer",
+        default="whitespace-prototype",
+        help="prototype name or Hugging Face model id",
+    )
     args = parser.parse_args()
 
     with open(args.path, encoding="utf-8") as file:
         trace = json.loads(file.readline())
 
-    relations = annotate_trace(trace)
+    relations = annotate_trace(trace, tokenizer=load_tokenizer(args.tokenizer))
     rendered = "\n".join(json.dumps(item, ensure_ascii=False) for item in relations) + "\n"
     if args.output:
         with open(args.output, "w", encoding="utf-8") as file:
