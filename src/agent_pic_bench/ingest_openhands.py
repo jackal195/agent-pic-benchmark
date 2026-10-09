@@ -6,7 +6,7 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, Iterator, List, Optional
+from typing import Any, Dict, Iterator, List, Optional, Set, Tuple
 
 
 PATH_ARGUMENT_RE = re.compile(r'"path"\s*:\s*"([^"]+)"')
@@ -39,6 +39,29 @@ def _path_from_tool_call(message: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _tool_specs(message: Dict[str, Any]) -> List[Tuple[str, Dict[str, Any], str]]:
+    """Return (call_id, parsed arguments, function name) for tool calls."""
+    specs: List[Tuple[str, Dict[str, Any], str]] = []
+    for call in message.get("tool_calls") or []:
+        function = call.get("function") or {}
+        try:
+            arguments = json.loads(function.get("arguments") or "{}")
+        except (TypeError, json.JSONDecodeError):
+            arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        specs.append((call.get("id") or "", arguments, function.get("name") or ""))
+    return specs
+
+
+def _object_id(repo_id: str, path: str) -> str:
+    return f"obj:{repo_id}:{path}"
+
+
+def _editor_mutation(args: Dict[str, Any]) -> bool:
+    return args.get("command") in {"create", "str_replace", "insert", "undo_edit"}
+
+
 def _event_type(role: str) -> str:
     return {
         "system": "agent_prompt",
@@ -57,16 +80,57 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
     messages = row.get("messages") or []
 
     call_objects: Dict[str, str] = {}
+    pending_effects: Dict[str, Dict[str, Any]] = {}
+    snapshot_number = 0
+    snapshot_id: Optional[str] = "synthetic-snapshot-0000"
+    state_known = True
     events: List[Dict[str, Any]] = []
     for event_index, message in enumerate(messages):
         role = message.get("role") or "unknown"
         content = message.get("content") or ""
         raw_text = content if content else _tool_call_text(message)
         source_objects: List[str] = []
+        changed_objects: Set[str] = set()
+        state_effect = "none"
+
+        if role == "tool":
+            effect = pending_effects.pop(message.get("tool_call_id") or "", None)
+            if effect:
+                changed_objects.update(effect.get("changed_objects", []))
+                if effect.get("unknown_state"):
+                    state_effect = "unknown"
+                    state_known = False
+                    snapshot_id = None
+                elif changed_objects:
+                    state_effect = "object_changed"
+                    if state_known:
+                        snapshot_number += 1
+                        snapshot_id = f"synthetic-snapshot-{snapshot_number:04d}"
+
+        for call_id, arguments, function_name in _tool_specs(message):
+            path = arguments.get("path")
+            object_id = _object_id(repo_id, path) if isinstance(path, str) else None
+            if object_id:
+                call_objects[call_id] = object_id
+                if function_name == "str_replace_editor" and _editor_mutation(arguments):
+                    pending_effects[call_id] = {
+                        "changed_objects": [object_id],
+                        "unknown_state": False,
+                    }
+                elif function_name == "execute_bash":
+                    pending_effects[call_id] = {
+                        "changed_objects": [],
+                        "unknown_state": True,
+                    }
+            elif function_name == "execute_bash":
+                pending_effects[call_id] = {
+                    "changed_objects": [],
+                    "unknown_state": True,
+                }
 
         path = _path_from_tool_call(message)
         if path:
-            object_id = f"obj:{repo_id}:{path}"
+            object_id = _object_id(repo_id, path)
             source_objects.append(object_id)
             for call in message.get("tool_calls") or []:
                 if call.get("id"):
@@ -86,11 +150,13 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
                 "event_type": _event_type(role),
                 "tool_type": message.get("name"),
                 "tool_call_id": tool_call_id,
-                "snapshot_id": None,
+                "snapshot_id": snapshot_id,
+                "state_effect": state_effect,
                 "raw_text": raw_text,
                 "normalized_text": raw_text,
                 "token_ids": [],
                 "source_objects": sorted(set(source_objects)),
+                "changed_objects": sorted(changed_objects),
                 "dynamic_fields": [],
                 "parent_event_id": (
                     f"event-{event_index - 1:04d}" if event_index else None
@@ -108,8 +174,8 @@ def normalize_row(row: Dict[str, Any], source_dataset: str) -> Dict[str, Any]:
         "agents": ["openhands"],
         "initial_state": {
             "repo_id": repo_id,
-            "snapshot_id": None,
-            "snapshot_source": "not-present-in-trajectory",
+            "snapshot_id": "synthetic-snapshot-0000",
+            "snapshot_source": "trajectory-derived-synthetic",
         },
         "events": events,
         "task_metadata": {
