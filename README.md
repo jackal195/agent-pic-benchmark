@@ -26,6 +26,9 @@ python3 -m pip install -e '.[hf]'
 PYTHONPATH=src python3 -m agent_pic_bench.annotate_reuse \
   data/examples/swe-mini.jsonl \
   --tokenizer MODEL_OR_TOKENIZER_ID
+
+PYTHONPATH=src python3 -m agent_pic_bench.metrics \
+  work/normalized/openhands-shard0.jsonl
 ```
 
 开发安装：
