@@ -1,0 +1,2 @@
+{"relation_id":"rel-0001","source_event_id":"event-0001","target_event_id":"event-0002","relation_type":"exact_object_repeat","scope":"cross_agent","source_agent_id":"planner","target_agent_id":"coder","source_snapshot_id":"commit0","target_snapshot_id":"commit0","state_compatible":true,"annotation_confidence":"exact"}
+

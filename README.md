@@ -9,6 +9,7 @@
 - SWE-Gym repo-based trajectory 分析协议；
 - 相关方法对照矩阵；
 - 一个可校验 JSONL trace 的最小 Python 工具。
+- 一个手工标注关系样例 `data/examples/swe-mini-relations.jsonl`。
 
 ## 快速开始
 
