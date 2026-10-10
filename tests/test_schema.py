@@ -92,3 +92,24 @@ def test_partial_overlap_reports_token_span() -> None:
     assert relation["raw_exact"] is False
     assert relation["overlap_tokens"] >= 1
     assert relation["position_relation"] in {"prefix", "interior", "suffix"}
+
+
+def test_relation_marks_position_safety_conservatively() -> None:
+    record = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    relation = next(
+        item for item in annotate_trace(record)
+        if item["relation_id"] == "event-0001->event-0002"
+    )
+    assert relation["exchangeable"] == "unknown"
+    assert relation["order_sensitive"] == "unknown"
+    assert relation["partial_span_safe"] == "unknown"
+
+
+def test_annotation_cli_can_process_all_traces(tmp_path: Path) -> None:
+    from agent_pic_bench.annotate_reuse import annotate_jsonl
+
+    output = tmp_path / "relations.jsonl"
+    annotate_jsonl(EXAMPLE, output)
+    rows = [json.loads(line) for line in output.read_text(encoding="utf-8").splitlines()]
+    assert rows
+    assert all(row["trace_id"] == "swe_repo12_task004_run01" for row in rows)

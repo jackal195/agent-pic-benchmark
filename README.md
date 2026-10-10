@@ -37,12 +37,19 @@ PYTHONPATH=src python3 -m agent_pic_bench.cross_trace \
 ./scripts/run_openhands_pilot.sh
 ```
 
+脚本会在 `work/results/openhands-shard0/` 生成 `relations.jsonl`，它是后续
+PIC 方法评测使用的 reuse oracle 候选标注，不是具体缓存方法的命中结果。
+
 `metrics` 中的 `prefix_relations`、`non_prefix_relations` 和
 `overlap_tokens` 是机会分析指标，不是实际 KV 命中率；只有接入具体方法并
 重放序列化请求后，才能报告真实 hit、TTFT 和质量变化。
 
 `cross_trace` 用 task_id 聚合独立轨迹，并把 JSONL 顺序明确标为排序假设；没有
 真实时间戳时，它只能作为可复查的跨任务 proxy，不能包装成线上用户到达率。
+
+`annotate_reuse` 会把每条轨迹中的 observation 两两比较，输出扁平的
+`relations.jsonl`。其中 `exchangeable`、`order_sensitive` 和
+`partial_span_safe` 当前保守标为 `unknown`，不会把代码重复误判成可以随意搬运。
 
 开发安装：
 
@@ -52,6 +59,14 @@ python3 -m pytest
 ```
 
 数据设计文档在 [`outputs/`](outputs/README.md)。
+
+现有场景与数据集总表见 [`outputs/dataset-registry-v0.1.md`](outputs/dataset-registry-v0.1.md)。
+
+机器可读的数据集登记表位于 `data/dataset_registry.json`，可用下面命令检查：
+
+```bash
+PYTHONPATH=src python3 -m agent_pic_bench.validate_registry data/dataset_registry.json
+```
 
 汇报时可以直接参考 [`outputs/reporting-guide-v0.1.md`](outputs/reporting-guide-v0.1.md)。
 

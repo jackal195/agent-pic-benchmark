@@ -20,7 +20,13 @@ PYTHONPATH="$repo_root/src" \
   python3 -m agent_pic_bench.cross_trace \
   "$output_dir/normalized.jsonl" > "$output_dir/cross-trace.json"
 
+PYTHONPATH="$repo_root/src" \
+  python3 -m agent_pic_bench.annotate_reuse \
+  "$output_dir/normalized.jsonl" \
+  --output "$output_dir/relations.jsonl"
+
 printf '%s\n' "Wrote pilot results to $output_dir"
 printf '%s\n' "  normalized.jsonl"
 printf '%s\n' "  metrics.json"
 printf '%s\n' "  cross-trace.json"
+printf '%s\n' "  relations.jsonl"

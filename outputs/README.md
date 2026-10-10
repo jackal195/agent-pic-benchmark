@@ -8,6 +8,7 @@
 4. [Related-method comparison matrix](related-method-matrix-v0.1.md)
 5. [Content/KV reuse evaluation synthesis](content-reuse-evaluation-synthesis-v0.1.md)
 6. [Reporting guide](reporting-guide-v0.1.md)
+7. [Dataset registry](dataset-registry-v0.1.md)
 
 代码工具中，`annotate_reuse` 负责单轨迹的 observation→observation 关系，
 `cross_trace` 负责按独立 `task_id` 统计首次引入对象是否已经被其他轨迹看到。

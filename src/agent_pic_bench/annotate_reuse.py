@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from .overlap import longest_common_span
@@ -109,6 +110,9 @@ def annotate_pair(
         "state_compatible": state_compatible,
         "state_relation": state_relation,
         "annotation_confidence": "exact" if raw_exact else "structural",
+        "exchangeable": "unknown",
+        "order_sensitive": "unknown",
+        "partial_span_safe": "unknown",
     }
     if source_index is not None and target_index is not None:
         relation["reuse_distance_events"] = target_index - source_index
@@ -141,6 +145,23 @@ def annotate_trace(
     return relations
 
 
+def annotate_jsonl(input_path: Path, output_path: Path, tokenizer_name: str = "whitespace-prototype") -> int:
+    """Annotate every trace in a JSONL file and write flat relation records."""
+    tokenizer = load_tokenizer(tokenizer_name)
+    count = 0
+    with input_path.open(encoding="utf-8") as source, output_path.open(encoding="utf-8", mode="w") as target:
+        for line in source:
+            if not line.strip():
+                continue
+            trace = json.loads(line)
+            for relation in annotate_trace(trace, tokenizer=tokenizer):
+                relation["trace_id"] = trace["trace_id"]
+                relation["task_id"] = trace.get("task_id")
+                target.write(json.dumps(relation, ensure_ascii=False) + "\n")
+                count += 1
+    return count
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Annotate Agent PIC reuse relations")
     parser.add_argument("path")
@@ -152,15 +173,12 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with open(args.path, encoding="utf-8") as file:
-        trace = json.loads(file.readline())
-
-    relations = annotate_trace(trace, tokenizer=load_tokenizer(args.tokenizer))
-    rendered = "\n".join(json.dumps(item, ensure_ascii=False) for item in relations) + "\n"
     if args.output:
-        with open(args.output, "w", encoding="utf-8") as file:
-            file.write(rendered)
+        annotate_jsonl(Path(args.path), Path(args.output), args.tokenizer)
     else:
+        with open(args.path, encoding="utf-8") as file:
+            trace = json.loads(file.readline())
+        relations = annotate_trace(trace, tokenizer=load_tokenizer(args.tokenizer))
         print(json.dumps(relations, ensure_ascii=False, indent=2))
 
 
