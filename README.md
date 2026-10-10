@@ -33,6 +33,8 @@ PYTHONPATH=src python3 -m agent_pic_bench.metrics \
 
 PYTHONPATH=src python3 -m agent_pic_bench.cross_trace \
   work/normalized/openhands-shard0.jsonl
+
+./scripts/run_openhands_pilot.sh
 ```
 
 `metrics` 中的 `prefix_relations`、`non_prefix_relations` 和
@@ -50,6 +52,8 @@ python3 -m pytest
 ```
 
 数据设计文档在 [`outputs/`](outputs/README.md)。
+
+汇报时可以直接参考 [`outputs/reporting-guide-v0.1.md`](outputs/reporting-guide-v0.1.md)。
 
 导入真实 OpenHands-SWE-Gym 轨迹需要 Parquet 依赖：
 

@@ -157,7 +157,7 @@ repo snapshot → file path → line window → function/class/AST → tokenizer
 | 明确发生对象修改 | 2,237（6.13%） | `observation → mutation → observation` 口径 |
 | 状态未知 | 17,676（48.43%） | 主要来自 shell 可能改文件 |
 | prefix / non-prefix 关系 | 8,601 / 26,513 | 非前缀机会明显不能被忽略 |
-| 跨 task 首次见 proxy | 4,768 / 13,630（34.98%） | 使用 JSONL 顺序，非真实时间到达率 |
+| 跨 task 首次见 proxy | 790 / 6,666（11.85%） | 每个 task 只统计首次引入，使用 JSONL 顺序，非真实时间到达率 |
 
 这组数字仍不是论文最终结果：当前 shard 只有一个 `openhands` Agent，尚不能支持真实跨 Agent 结论；对象 ID 仍以 path 为主，`view_range` 还需要和实际代码内容、函数/AST 及固定模型 tokenizer 对齐。它的作用是证明分析链路的口径正在变得可解释，而不是宣布 SWE 的最终收益。
 

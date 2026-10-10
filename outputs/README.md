@@ -7,10 +7,14 @@
 3. [SWE-Gym reuse opportunity protocol](swe-gym-reuse-protocol-v0.1.md)
 4. [Related-method comparison matrix](related-method-matrix-v0.1.md)
 5. [Content/KV reuse evaluation synthesis](content-reuse-evaluation-synthesis-v0.1.md)
+6. [Reporting guide](reporting-guide-v0.1.md)
 
 代码工具中，`annotate_reuse` 负责单轨迹的 observation→observation 关系，
 `cross_trace` 负责按独立 `task_id` 统计首次引入对象是否已经被其他轨迹看到。
 后者会明确写出 JSONL 顺序假设，不把缺少时间戳的数据伪装成线上到达顺序。
+其中 `cross_task_content_introductions` 按内容 hash 统计，
+`same_path_cross_task_introductions` 还要求对象 path 相同，用来区分内容复用
+和 repository/path 级复用。
 
 ## 当前假设
 
